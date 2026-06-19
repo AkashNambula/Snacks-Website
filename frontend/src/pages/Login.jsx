@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogIn, ArrowRight } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Login = () => {
   const { login, user } = useAuth();
@@ -33,6 +34,7 @@ const Login = () => {
     setError('');
 
     if (!email || !password) {
+      toast.error('Please fill in both email and password.');
       setError('Please fill in both email and password.');
       return;
     }
@@ -43,12 +45,14 @@ const Login = () => {
 
     if (result.success) {
       const storedUser = JSON.parse(localStorage.getItem('user'));
+      toast.success(`Logged in successfully! Welcome, ${storedUser?.fullName || 'User'}!`);
       if (storedUser && storedUser.role === 'ADMIN') {
         navigate('/admin', { replace: true });
       } else {
         navigate(redirect === 'dashboard' ? '/dashboard' : `/${redirect}`);
       }
     } else {
+      toast.error(result.error);
       setError(result.error);
     }
   };

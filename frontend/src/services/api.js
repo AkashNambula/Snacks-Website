@@ -227,7 +227,20 @@ const handleMockRequest = (config) => {
   
   const url = config.url;
   const method = config.method.toUpperCase();
-  const data = config.data ? JSON.parse(config.data) : null;
+  
+  let data = null;
+  if (config.data) {
+    if (config.data instanceof FormData) {
+      data = config.data;
+    } else {
+      try {
+        data = typeof config.data === 'string' ? JSON.parse(config.data) : config.data;
+      } catch (e) {
+        data = config.data;
+      }
+    }
+  }
+  
   const params = config.params || {};
 
   console.warn(`[Mock Database API Fallback] ${method} request to URL: ${url}`);
@@ -259,6 +272,23 @@ const handleMockRequest = (config) => {
   };
 
   // --- Endpoints routing ---
+
+  // 0. IMAGE UPLOAD FALLBACK
+  if (url === '/api/upload' && method === 'POST') {
+    let file = null;
+    if (data instanceof FormData) {
+      file = data.get('file');
+    }
+    if (file) {
+      try {
+        const localUrl = URL.createObjectURL(file);
+        return resolve(200, { imageUrl: localUrl });
+      } catch (e) {
+        console.error('Failed to create mock local URL', e);
+      }
+    }
+    return resolve(200, { imageUrl: 'https://images.unsplash.com/photo-1541532713592-79a0317b6b77?q=80&w=600&auto=format&fit=crop' });
+  }
 
   // 1. AUTH LOGIN
   if (url === '/api/auth/login' && method === 'POST') {

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { ShoppingBag, User, Menu, X, LogOut, LayoutDashboard, UserCheck } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -14,6 +15,7 @@ const Navbar = () => {
   const handleLogout = () => {
     logout();
     setShowDropdown(false);
+    toast.success('Signed out successfully.');
     navigate('/');
   };
 

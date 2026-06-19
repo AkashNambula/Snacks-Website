@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { 
   Users, ShoppingCart, Package, DollarSign, Edit, Trash2, Plus, 
-  Search, RefreshCw, X, ChevronRight, Clipboard, UserCheck
+  Search, RefreshCw, X, ChevronRight, Clipboard, UserCheck, Upload
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('stats');
@@ -33,6 +34,19 @@ const AdminDashboard = () => {
   });
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+
+  // Custom Confirmation Modal
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
+
+  // Dual Image Upload Source Mode
+  const [imageSourceMode, setImageSourceMode] = useState('url'); // 'url' or 'upload'
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [isImageUrlValid, setIsImageUrlValid] = useState(true);
 
   const loadStats = async () => {
     try {
@@ -84,29 +98,41 @@ const AdminDashboard = () => {
   const handleUpdateOrderStatus = async (orderId, newStatus) => {
     try {
       await api.put(`/api/admin/orders/${orderId}/status`, { status: newStatus });
+      toast.success(`Order status updated to ${newStatus}`);
       loadOrders(orderQuery);
       loadStats(); // refresh revenue if needed
     } catch (err) {
       console.error('Failed to update order status', err);
+      toast.error('Failed to update order status');
+    }
+  };
+
+  const executeDeleteUser = async (userId) => {
+    try {
+      await api.delete(`/api/admin/users/${userId}`);
+      toast.success('User deleted successfully');
+      loadUsers(userQuery);
+      loadStats();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete user.');
     }
   };
 
   // Handle user deletion
-  const handleDeleteUser = async (userId) => {
-    if (window.confirm('Are you sure you want to delete this customer account?')) {
-      try {
-        await api.delete(`/api/admin/users/${userId}`);
-        loadUsers(userQuery);
-        loadStats();
-      } catch (err) {
-        alert(err.response?.data?.message || 'Failed to delete user.');
-      }
-    }
+  const handleDeleteUser = (userId) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Customer Account',
+      message: 'Are you sure you want to delete this customer account? This action cannot be undone.',
+      onConfirm: () => executeDeleteUser(userId)
+    });
   };
 
   // Open modal for Product adding
   const handleOpenAddModal = () => {
     setEditingProductId(null);
+    setImageSourceMode('url');
+    setIsImageUrlValid(true);
     setProdForm({
       productName: '',
       description: '',
@@ -124,6 +150,14 @@ const AdminDashboard = () => {
   // Open modal for Product editing
   const handleOpenEditModal = (product) => {
     setEditingProductId(product.id);
+    
+    // Auto-detect image source mode
+    if (product.imageUrl && product.imageUrl.startsWith('/uploads/')) {
+      setImageSourceMode('upload');
+    } else {
+      setImageSourceMode('url');
+    }
+    setIsImageUrlValid(true);
     
     // Find prices
     const p250 = product.weights.find(w => w.weight === '250 Grams')?.price || '0';
@@ -144,6 +178,37 @@ const AdminDashboard = () => {
     setShowProductModal(true);
   };
 
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Only PNG, JPG, JPEG, and WEBP formats are allowed.');
+      return;
+    }
+
+    setUploadingImage(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await api.post('/api/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      setProdForm(prev => ({ ...prev, imageUrl: response.data.imageUrl }));
+      setIsImageUrlValid(true);
+      toast.success('Image uploaded successfully.');
+    } catch (err) {
+      console.error('Upload failed', err);
+      toast.error(err.response?.data?.error || 'Failed to upload image.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   // Submit product Form (create or edit)
   const handleSaveProduct = async (e) => {
     e.preventDefault();
@@ -152,8 +217,21 @@ const AdminDashboard = () => {
 
     const { productName, description, imageUrl, category, price250, price500, price1000 } = prodForm;
 
-    if (!productName || !description || !imageUrl || !price250 || !price500 || !price1000) {
+    if (!productName || !description || !price250 || !price500 || !price1000) {
+      toast.error('Please fill in all required fields.');
       setFormError('Please fill in all fields.');
+      return;
+    }
+
+    if (!imageUrl) {
+      toast.error('Please provide an image URL or upload an image.');
+      setFormError('Please provide an image URL or upload an image.');
+      return;
+    }
+
+    if (!isImageUrlValid) {
+      toast.error('Please provide a valid image URL.');
+      setFormError('Please provide a valid image URL.');
       return;
     }
 
@@ -173,10 +251,12 @@ const AdminDashboard = () => {
       if (editingProductId) {
         // Edit Mode
         await api.put(`/api/admin/products/${editingProductId}`, payload);
+        toast.success('Product updated successfully');
         setFormSuccess('Snack product modified successfully!');
       } else {
         // Add Mode
         await api.post('/api/admin/products', payload);
+        toast.success('Product added successfully');
         setFormSuccess('New snack product added successfully!');
       }
 
@@ -188,21 +268,31 @@ const AdminDashboard = () => {
       }, 1500);
     } catch (err) {
       console.error('Failed to save product', err);
+      toast.error(err.response?.data?.message || 'Could not save snack product.');
       setFormError(err.response?.data?.message || 'Could not save snack product.');
     }
   };
 
-  // Handle product deletion
-  const handleDeleteProduct = async (productId) => {
-    if (window.confirm('Are you sure you want to delete this snack product? This will clear all weights configurations.')) {
-      try {
-        await api.delete(`/api/admin/products/${productId}`);
-        loadProducts();
-        loadStats();
-      } catch (err) {
-        console.error('Failed to delete product', err);
-      }
+  const executeDeleteProduct = async (productId) => {
+    try {
+      await api.delete(`/api/admin/products/${productId}`);
+      toast.success('Product deleted successfully');
+      loadProducts();
+      loadStats();
+    } catch (err) {
+      console.error('Failed to delete product', err);
+      toast.error('Failed to delete product');
     }
+  };
+
+  // Handle product deletion
+  const handleDeleteProduct = (productId) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Snack Product',
+      message: 'Are you sure you want to delete this snack product? This will clear all weight configurations.',
+      onConfirm: () => executeDeleteProduct(productId)
+    });
   };
 
   // Handle Search input submits
@@ -622,17 +712,87 @@ const AdminDashboard = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Product Image URL *
+                <label className="block text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">
+                  Product Image *
                 </label>
-                <input
-                  type="url"
-                  value={prodForm.imageUrl}
-                  onChange={(e) => setProdForm({ ...prodForm, imageUrl: e.target.value })}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full bg-brand-creamlight border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-brand-dark focus:outline-none focus:border-brand-bronze"
-                  required
-                />
+                <div className="flex bg-brand-creamlight/30 border border-brand-cream/40 p-1 rounded-xl mb-3.5 max-w-[240px]">
+                  <button
+                    type="button"
+                    onClick={() => setImageSourceMode('url')}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
+                      imageSourceMode === 'url'
+                        ? 'bg-brand-dark text-brand-cream shadow-sm'
+                        : 'text-brand-dark hover:text-brand-bronze'
+                    }`}
+                  >
+                    Image URL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImageSourceMode('upload')}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-extrabold transition-all duration-200 cursor-pointer ${
+                      imageSourceMode === 'upload'
+                        ? 'bg-brand-dark text-brand-cream shadow-sm'
+                        : 'text-brand-dark hover:text-brand-bronze'
+                    }`}
+                  >
+                    Upload Image
+                  </button>
+                </div>
+
+                {imageSourceMode === 'url' ? (
+                  <input
+                    type="url"
+                    value={prodForm.imageUrl}
+                    onChange={(e) => {
+                      setProdForm({ ...prodForm, imageUrl: e.target.value });
+                      setIsImageUrlValid(true);
+                    }}
+                    placeholder="Pasted direct image URL (e.g. https://...)"
+                    className="w-full bg-brand-creamlight border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-brand-dark focus:outline-none focus:border-brand-bronze"
+                  />
+                ) : (
+                  <div className="flex items-center space-x-3 bg-brand-creamlight/20 border border-brand-cream/15 p-4 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('file-picker-input').click()}
+                      disabled={uploadingImage}
+                      className="px-4 py-2.5 bg-brand-cream text-brand-dark hover:bg-brand-dark hover:text-brand-cream border border-brand-light/20 rounded-xl text-xs font-bold transition-all duration-200 flex items-center space-x-2 disabled:opacity-50 cursor-pointer"
+                    >
+                      <Upload className="h-4 w-4 text-brand-bronze" />
+                      <span>{uploadingImage ? 'Uploading...' : 'Choose Image'}</span>
+                    </button>
+                    <span className="text-[10px] text-gray-400">Supports PNG, JPG, JPEG, WEBP</span>
+                    <input
+                      type="file"
+                      id="file-picker-input"
+                      accept="image/png, image/jpeg, image/jpg, image/webp"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </div>
+                )}
+
+                {/* Image Preview Block */}
+                {prodForm.imageUrl && (
+                  <div className="mt-4 bg-brand-creamlight/10 border border-brand-cream/20 p-3 rounded-2xl">
+                    <span className="block text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Image Preview</span>
+                    <div className="relative aspect-video max-w-xs rounded-xl overflow-hidden bg-brand-creamlight/45 border border-brand-cream/35 flex items-center justify-center">
+                      <img
+                        src={prodForm.imageUrl}
+                        alt="Product Preview"
+                        className="w-full h-full object-cover"
+                        onLoad={() => setIsImageUrlValid(true)}
+                        onError={() => setIsImageUrlValid(false)}
+                      />
+                      {!isImageUrlValid && (
+                        <div className="absolute inset-0 bg-red-50/95 flex flex-col items-center justify-center p-3 text-center border border-red-200 rounded-xl">
+                          <span className="text-[10px] text-red-600 font-extrabold uppercase tracking-wider">Invalid image URL</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -709,6 +869,42 @@ const AdminDashboard = () => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-brand-darker/60 backdrop-blur-[2px] flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 border border-brand-cream shadow-2xl relative space-y-4 text-center">
+            <div className="flex justify-center text-brand-bronze mb-2">
+              <span className="bg-brand-cream/40 p-4 rounded-full">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </span>
+            </div>
+            <h3 className="text-lg font-bold text-brand-dark">{confirmModal.title}</h3>
+            <p className="text-xs text-gray-500 leading-relaxed">{confirmModal.message}</p>
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                className="w-full bg-brand-creamlight text-brand-dark py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmModal.onConfirm) confirmModal.onConfirm();
+                  setConfirmModal({ ...confirmModal, isOpen: false });
+                }}
+                className="w-full bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
