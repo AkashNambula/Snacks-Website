@@ -1,0 +1,43 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-brand-dark: #3D2314;      /* Premium Dark Brown */
+  --color-brand-darker: #2A170C;    /* Near Black Brown */
+  --color-brand-light: #8B5A2B;     /* Golden Brown */
+  --color-brand-bronze: #CD7F32;    /* Rich Bronze Accent */
+  --color-brand-cream: #FFFDD0;     /* Soft Cream */
+  --color-brand-creamlight: #FAF9F6;/* Off White */
+  
+  --font-sans: 'Outfit', sans-serif;
+}
+
+/* Custom Scrollbar for premium feel */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #FAF9F6;
+}
+::-webkit-scrollbar-thumb {
+  background: #8B5A2B;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3D2314;
+}
+
+/* Page transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+body {
+  @apply bg-brand-creamlight text-brand-dark font-sans antialiased selection:bg-brand-light selection:text-white;
+}
